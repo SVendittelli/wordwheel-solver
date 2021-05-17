@@ -7,12 +7,16 @@ async function getDictionary() {
         const results = await axios.get('https://github.com/dwyl/english-words/raw/master/words_dictionary.json');
         writeFileSync('words_dictionary.json', JSON.stringify(results.data));
     }
-    return JSON.parse(readFileSync('words_dictionary.json'));
+    const dictionary = readFileSync('words_dictionary.json');
+    console.log(`\ndictionary length: ${Object.keys(dictionary).length.toLocaleString()} words\n`);
+    return JSON.parse(dictionary);
 }
 
 const centerLetter = 'a';
 const letters = ['c', 'c', 't', 'g', 'e', 'p', 'n', 'i'];
+const shortestWord = 3;
 const longestWord = letters.length + 1;
+console.log(`finding all words ${shortestWord}-${longestWord} letters long that all contain '${centerLetter}' and any subset of:`, letters.sort((a, b) => a.localeCompare(b)));
 
 const start = new Date();
 
@@ -26,7 +30,7 @@ const subsets = letters.reduce(
 
 let index = 0;
 subsets.forEach(subset => {
-    if (subset.length < 2) { return; }
+    if (subset.length < shortestWord - 1) { return; }
     const _subset = [centerLetter, ...subset];
     histograms.push({ length: _subset.length, histogram: {} });
     _subset.forEach(letter => histograms[index].histogram[letter] = _subset.filter(_letter => letter === _letter).length);
@@ -37,7 +41,7 @@ const uniqueHistograms = uniqWith(histograms, isEqual);
 (async function () {
     const dictionary = await getDictionary();
 
-    const correctLengthWords = Object.keys(dictionary).filter(word => word.length >= 3 && word.length <= longestWord);
+    const correctLengthWords = Object.keys(dictionary).filter(word => word.length >= shortestWord && word.length <= longestWord);
     const dictionaryHistogram = groupBy(correctLengthWords.map((word) => {
         const _letters = word.split('');
         const histogram = {};
@@ -59,11 +63,12 @@ const uniqueHistograms = uniqWith(histograms, isEqual);
             })
     });
 
-    const uniqueResults = uniqWith(results, isEqual).sort((a, b) => a.length - b.length || a.localeCompare(b));
+    const uniqueResults = results.sort((a, b) => a.length - b.length || a.localeCompare(b));
     writeFileSync('results.json', JSON.stringify(uniqueResults, null, 2));
     const histogram = groupBy(uniqueResults, (_result) => _result.length);
     writeFileSync('histogram.json', JSON.stringify(histogram, null, 2));
 
     const end = new Date();
     console.log(`\n${uniqueResults.length} results in ${(end - start) / 1000} seconds`);
+    console.log(`longest word: '${results.slice(-1)[0]}'`);
 })();
