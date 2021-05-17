@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { groupBy, isEqual, uniqWith } from 'lodash-es';
+import { groupBy, isEqual, uniq, uniqWith } from 'lodash-es';
 
 async function getDictionary() {
     if (!existsSync('words_dictionary.json')) {
@@ -12,10 +12,11 @@ async function getDictionary() {
 
 const centerLetter = 'a';
 const letters = ['c', 'c', 't', 'g', 'e', 'p', 'n', 'i'];
+const longestWord = letters.length + 1;
 
 const start = new Date();
 
-const counts = [];
+const histograms = [];
 const subsets = letters.reduce(
     (givenSet, setValue) => givenSet.concat(
         givenSet.map(givenSet => [setValue, ...givenSet])
@@ -23,38 +24,39 @@ const subsets = letters.reduce(
     [[]]
 );
 
-let count = 0;
-subsets.forEach(set => {
-    if (set.length < 2) { return; }
-    counts.push({});
-    const _set = [centerLetter, ...set];
-    _set.forEach(letter => counts[count][letter] = _set.filter(_letter => letter === _letter).length);
-    count++;
+let index = 0;
+subsets.forEach(subset => {
+    if (subset.length < 2) { return; }
+    const _subset = [centerLetter, ...subset];
+    histograms.push({ length: _subset.length, histogram: {} });
+    _subset.forEach(letter => histograms[index].histogram[letter] = _subset.filter(_letter => letter === _letter).length);
+    index++;
 });
-const uniqueCounts = uniqWith(counts, isEqual);
-const uniqueCountsLength = uniqueCounts.length;
+const uniqueHistograms = uniqWith(histograms, isEqual);
 
 (async function () {
     const dictionary = await getDictionary();
 
-    const dictCounts = {};
-    Object.keys(dictionary).forEach(word => {
+    const correctLengthWords = Object.keys(dictionary).filter(word => word.length >= 3 && word.length <= longestWord);
+    const dictionaryHistogram = groupBy(correctLengthWords.map((word) => {
         const _letters = word.split('');
-        if (_letters.length < 3) { return; }
-        const _count = {};
-        _letters.forEach(letter => _count[letter] = _letters.filter(_letter => letter === _letter).length);
-        dictCounts[word] = _count;
-    })
-    console.log(`dictionary length: ${Object.keys(dictCounts).length}`)
+        const histogram = {};
+        uniq(_letters).forEach(letter => histogram[letter] = _letters.filter(_letter => letter === _letter).length);
+        return { word, histogram };
+    }), (_entry) => _entry.word.length);
 
     const results = [];
-    uniqueCounts.forEach((count, i) => {
-        Object.entries(dictCounts).forEach(([word, _count]) => {
-            if (isEqual(count, _count)) {
-                results.push(word);
-                console.log(`${('  ' + results.length).slice(-3)}: ${word} (~${Math.round(1000 * i / uniqueCountsLength) / 10}%)`);
-            }
-        })
+    uniqueHistograms.forEach((wordHistogram) => {
+        Object.entries(dictionaryHistogram)
+            .filter(([wordLength]) => +wordLength === wordHistogram.length)
+            .forEach(([_, dictionaryEntries]) => {
+                dictionaryEntries.forEach((dictionaryEntry) => {
+                    if (isEqual(wordHistogram.histogram, dictionaryEntry.histogram)) {
+                        results.push(dictionaryEntry.word);
+                        console.log(`${results.length}: ${dictionaryEntry.word}`);
+                    }
+                })
+            })
     });
 
     const uniqueResults = uniqWith(results, isEqual).sort((a, b) => a.length - b.length || a.localeCompare(b));
@@ -63,7 +65,5 @@ const uniqueCountsLength = uniqueCounts.length;
     writeFileSync('histogram.json', JSON.stringify(histogram, null, 2));
 
     const end = new Date();
-    console.log(`duration ${(end - start) / 1000} seconds`);
-    console.log('total ' + uniqueResults.length);
-    console.log('by length ', histogram);
+    console.log(`\n${uniqueResults.length} results in ${(end - start) / 1000} seconds`);
 })();
